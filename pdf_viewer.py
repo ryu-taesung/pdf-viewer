@@ -1,8 +1,8 @@
 import sys
 from PySide6.QtWidgets import (QApplication, QMainWindow, QFileDialog, QVBoxLayout, QWidget, QGraphicsView,
-                               QGraphicsScene, QLabel, QLineEdit, QPushButton, QHBoxLayout, QSizePolicy, QCheckBox)
+                               QGraphicsScene, QLabel, QLineEdit, QPushButton, QHBoxLayout, QSizePolicy, QCheckBox, QSpacerItem)
 from PySide6.QtGui import QImage, QPixmap, QBrush, QColor, QPalette
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QRect
 import fitz  # PyMuPDF
 
 
@@ -24,15 +24,35 @@ class PDFViewer(QMainWindow):
         self.page_edit.editingFinished.connect(self.page_edit_changed)
         self.total_pages_label = QLabel()
 
+        self.zoom_label = QLabel("Zoom:")
+        self.zoom_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.zoom_edit = QLineEdit("2.0")
+        self.zoom_edit.setFixedWidth(50)
+        self.zoom_edit.editingFinished.connect(self.zoom_edit_changed)
+
         self.prev_button = QPushButton("Previous")
         self.prev_button.clicked.connect(self.prev_page)
         self.next_button = QPushButton("Next")
         self.next_button.clicked.connect(self.next_page)
 
+        # Create QHBoxLayout for page-related widgets
+        page_layout = QHBoxLayout()
+        page_layout.addWidget(self.page_label)
+        page_layout.addWidget(self.page_edit)
+        page_layout.addWidget(self.total_pages_label)
+
+        # Create QHBoxLayout for zoom-related widgets
+        zoom_layout = QHBoxLayout()
+        zoom_layout.addWidget(self.zoom_label)
+        zoom_layout.addWidget(self.zoom_edit)
+
+        # Create the main QHBoxLayout and add the sub-layouts and spacers
         pages_layout = QHBoxLayout()
-        pages_layout.addWidget(self.page_label)
-        pages_layout.addWidget(self.page_edit)
-        pages_layout.addWidget(self.total_pages_label)
+        pages_layout.addItem(QSpacerItem(0, 0, QSizePolicy.Expanding, QSizePolicy.Minimum))
+        pages_layout.addItem(QSpacerItem(0, 0, QSizePolicy.Expanding, QSizePolicy.Minimum))
+        pages_layout.addLayout(page_layout)
+        pages_layout.addItem(QSpacerItem(0, 0, QSizePolicy.Expanding, QSizePolicy.Minimum))
+        pages_layout.addLayout(zoom_layout)
 
         central_widget = QWidget()
         main_layout = QVBoxLayout(central_widget)
@@ -41,11 +61,11 @@ class PDFViewer(QMainWindow):
 
         controls_layout = QHBoxLayout()
         controls_layout.addWidget(self.prev_button)
-        controls_layout.addWidget(self.next_button)
         
         self.invert_colors_checkbox = QCheckBox("Invert Colors")
         self.invert_colors_checkbox.stateChanged.connect(self.invert_colors_toggled)
         controls_layout.addWidget(self.invert_colors_checkbox)
+        controls_layout.addWidget(self.next_button)
 
         main_layout.addLayout(controls_layout)
 
@@ -56,6 +76,7 @@ class PDFViewer(QMainWindow):
 
         self.doc = None
         self.current_page = 0
+        self.zoom_level = 2.0
 
     def open_pdf(self):
         options = QFileDialog.Options()
@@ -68,6 +89,8 @@ class PDFViewer(QMainWindow):
     def load_pdf(self, file_name):
         self.doc = fitz.open(file_name)
         self.total_pages_label.setText(f"of {self.doc.page_count}")
+        self.current_page = 0
+        self.page_edit.setText('1')
         self.show_page(self.current_page)
 
     def show_page(self, page_number):
@@ -76,7 +99,7 @@ class PDFViewer(QMainWindow):
 
         self.graphics_scene.clear()
         pdf_page = self.doc.load_page(page_number)
-        zoom = 2.0
+        zoom = self.zoom_level
         mat = fitz.Matrix(zoom, zoom)
         image = QImage.fromData(pdf_page.get_pixmap(matrix=mat).tobytes(), "PNG")
 
@@ -89,8 +112,13 @@ class PDFViewer(QMainWindow):
                     image.setPixelColor(x, y, inverted_color)
 
         pixmap = QPixmap.fromImage(image)
+        self.graphics_scene.clear()
         self.graphics_scene.addPixmap(pixmap)
         self.graphics_view.setScene(self.graphics_scene)
+        self.graphics_view.setSceneRect(pixmap.rect())
+
+        # Recenter the view
+        self.graphics_view.centerOn(self.graphics_scene.itemsBoundingRect().center())
         self.page_edit.setText(str(page_number + 1))
         self.current_page = page_number
 
@@ -108,6 +136,14 @@ class PDFViewer(QMainWindow):
         except ValueError:
             # Reset the page_edit to the current page number in case of invalid input
             self.page_edit.setText(str(self.current_page + 1))
+
+    def zoom_edit_changed(self):
+        try:
+            zoom = float(self.zoom_edit.text())
+            self.zoom_level = zoom
+            self.show_page(self.current_page)
+        except:
+            pass
 
     def invert_colors_toggled(self, state):
       self.show_page(self.current_page)
