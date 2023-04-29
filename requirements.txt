@@ -1,0 +1,6 @@
+Nuitka==1.5.6
+ordered-set==4.1.0
+PyMuPDF==1.22.1
+PySide6==6.2.4
+shiboken6==6.2.4
+zstandard==0.21.0
