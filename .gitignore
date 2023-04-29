@@ -1,2 +1,5 @@
 venv/
 library/
+*.build
+*.dist
+*.onefile-build

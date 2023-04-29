@@ -1,18 +1,70 @@
 import sys
+from os import path as _path
 from PySide6.QtWidgets import (QApplication, QMainWindow, QFileDialog, QVBoxLayout, QWidget, QGraphicsView,
                                QGraphicsScene, QLabel, QLineEdit, QPushButton, QHBoxLayout, QSizePolicy, QCheckBox, QSpacerItem)
-from PySide6.QtGui import QImage, QPixmap, QBrush, QColor, QPalette
-from PySide6.QtCore import Qt, QRect
+from PySide6.QtGui import QImage, QPixmap, QBrush, QColor, QPalette, QIcon
+from PySide6.QtCore import Qt, QRect, QObject, QRunnable, QThreadPool, Signal, Slot
 import fitz  # PyMuPDF
+
+class CustomGraphicsView(QGraphicsView):
+    def __init__(self, viewer, parent=None):
+        super().__init__(parent)
+        self.viewer = viewer
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Left:
+            self.viewer.prev_page()
+        elif event.key() == Qt.Key_Right:
+            self.viewer.next_page()
+        elif event.key() == Qt.Key_I:
+            self.viewer.invert_colors_checkbox.setChecked(not self.viewer.invert_colors_checkbox.isChecked())
+        else:
+            super().keyPressEvent(event)
+
+
+
+class WorkerSignals(QObject):
+    finished = Signal(object)
+
+class Worker(QRunnable):
+    def __init__(self, doc, page_number, zoom, invert):
+        super().__init__()
+        self.signals = WorkerSignals()
+        self.doc = doc
+        self.page_number = page_number
+        self.zoom = zoom
+        self.invert = invert
+
+    @Slot()
+    def run(self):
+        pdf_page = self.doc.load_page(self.page_number)
+        zoom = self.zoom
+        mat = fitz.Matrix(zoom, zoom)
+        image = QImage.fromData(pdf_page.get_pixmap(matrix=mat).tobytes(), "PNG")
+
+        # Invert colors if the checkbox is checked
+        if self.invert:
+            # for x in range(image.width()):
+            #     for y in range(image.height()):
+            #         color = QColor(image.pixel(x, y))
+            #         inverted_color = QColor.fromRgb(~color.rgb() & 0xFFFFFF)
+            #         image.setPixelColor(x, y, inverted_color)
+            image.invertPixels()
+        
+        self.signals.finished.emit(image)
 
 
 class PDFViewer(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("PDF Viewer")
+        icon = QIcon()
+        icon.addFile('file-pdf.png')
+        self.setWindowIcon(icon)
         self.resize(800, 600)
+        self.threadpool = QThreadPool()
 
-        self.graphics_view = QGraphicsView()
+        self.graphics_view = CustomGraphicsView(self)
         self.graphics_view.setBackgroundBrush(QBrush(QColor(0, 0, 0)))  # Set the background color to black
         self.graphics_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.graphics_scene = QGraphicsScene()
@@ -26,7 +78,7 @@ class PDFViewer(QMainWindow):
 
         self.zoom_label = QLabel("Zoom:")
         self.zoom_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self.zoom_edit = QLineEdit("2.0")
+        self.zoom_edit = QLineEdit()
         self.zoom_edit.setFixedWidth(50)
         self.zoom_edit.editingFinished.connect(self.zoom_edit_changed)
 
@@ -76,7 +128,9 @@ class PDFViewer(QMainWindow):
 
         self.doc = None
         self.current_page = 0
-        self.zoom_level = 2.0
+        self.zoom_level = 1.0
+
+        self.zoom_edit.setText(str(self.zoom_level))
 
     def open_pdf(self):
         options = QFileDialog.Options()
@@ -84,6 +138,7 @@ class PDFViewer(QMainWindow):
         file_name, _ = QFileDialog.getOpenFileName(self, "Open PDF", "", "PDF Files (*.pdf)", options=options)
 
         if file_name:
+            self.setWindowTitle(f'{_path.basename(file_name)}')
             self.load_pdf(file_name)
 
     def load_pdf(self, file_name):
@@ -96,21 +151,13 @@ class PDFViewer(QMainWindow):
     def show_page(self, page_number):
         if self.doc is None or page_number < 0 or page_number >= self.doc.page_count:
             return
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        self.current_page = page_number
+        worker = Worker(self.doc, page_number, float(self.zoom_edit.text()), self.invert_colors_checkbox.isChecked())
+        worker.signals.finished.connect(self.page_loaded)
+        self.threadpool.start(worker)
 
-        self.graphics_scene.clear()
-        pdf_page = self.doc.load_page(page_number)
-        zoom = self.zoom_level
-        mat = fitz.Matrix(zoom, zoom)
-        image = QImage.fromData(pdf_page.get_pixmap(matrix=mat).tobytes(), "PNG")
-
-        # Invert colors if the checkbox is checked
-        if self.invert_colors_checkbox.isChecked():
-            for x in range(image.width()):
-                for y in range(image.height()):
-                    color = QColor(image.pixel(x, y))
-                    inverted_color = QColor.fromRgb(~color.rgb() & 0xFFFFFF)
-                    image.setPixelColor(x, y, inverted_color)
-
+    def page_loaded(self, image):
         pixmap = QPixmap.fromImage(image)
         self.graphics_scene.clear()
         self.graphics_scene.addPixmap(pixmap)
@@ -119,9 +166,8 @@ class PDFViewer(QMainWindow):
 
         # Recenter the view
         self.graphics_view.centerOn(self.graphics_scene.itemsBoundingRect().center())
-        self.page_edit.setText(str(page_number + 1))
-        self.current_page = page_number
-
+        self.page_edit.setText(str(self.current_page + 1))
+        QApplication.restoreOverrideCursor()        
 
     def prev_page(self):
         self.show_page(self.current_page - 1)
