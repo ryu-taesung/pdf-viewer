@@ -165,7 +165,11 @@ class PDFViewer(QMainWindow):
         self.graphics_view.setSceneRect(pixmap.rect())
 
         # Recenter the view
-        self.graphics_view.centerOn(self.graphics_scene.itemsBoundingRect().center())
+        #self.graphics_view.centerOn(self.graphics_scene.itemsBoundingRect().center())
+        
+        # Scroll to top, not sure if this is best
+        self.graphics_view.centerOn(0,0)
+        
         self.page_edit.setText(str(self.current_page + 1))
         QApplication.restoreOverrideCursor()        
 
