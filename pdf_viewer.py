@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QFileDialog, QVBoxLayo
 from PySide6.QtGui import QImage, QPixmap, QBrush, QColor, QPalette, QIcon
 from PySide6.QtCore import Qt, QRect, QObject, QRunnable, QThreadPool, Signal, Slot
 import fitz  # PyMuPDF
+import random
 
 class CustomGraphicsView(QGraphicsView):
     def __init__(self, viewer, parent=None):
@@ -18,10 +19,11 @@ class CustomGraphicsView(QGraphicsView):
             self.viewer.next_page()
         elif event.key() == Qt.Key_I:
             self.viewer.invert_colors_checkbox.setChecked(not self.viewer.invert_colors_checkbox.isChecked())
+        elif event.key() == Qt.Key_R:
+            if self.viewer.doc:
+                self.viewer.show_page(random.randint(0, self.viewer.doc.page_count))
         else:
             super().keyPressEvent(event)
-
-
 
 class WorkerSignals(QObject):
     finished = Signal(object)
@@ -52,7 +54,6 @@ class Worker(QRunnable):
             image.invertPixels()
         
         self.signals.finished.emit(image)
-
 
 class PDFViewer(QMainWindow):
     def __init__(self):
