@@ -136,7 +136,7 @@ class PDFViewer(QMainWindow):
     def open_pdf(self):
         options = QFileDialog.Options()
         options |= QFileDialog.ReadOnly
-        file_name, _ = QFileDialog.getOpenFileName(self, "Open PDF", "", "PDF Files (*.pdf)", options=options)
+        file_name, _ = QFileDialog.getOpenFileName(self, "Open PDF", "", "PDF Files (*.pdf);;Epub Books (*.epub);;All files (*.*)", options=options)
 
         if file_name:
             self.setWindowTitle(f'{_path.basename(file_name)}')
