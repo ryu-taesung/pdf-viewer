@@ -11,6 +11,7 @@ class CustomGraphicsView(QGraphicsView):
     def __init__(self, viewer, parent=None):
         super().__init__(parent)
         self.viewer = viewer
+        self.zoom_step_size = 0.2
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Left:
@@ -22,6 +23,22 @@ class CustomGraphicsView(QGraphicsView):
         elif event.key() == Qt.Key_R:
             if self.viewer.doc:
                 self.viewer.show_page(random.randint(0, self.viewer.doc.page_count))
+        elif event.key() == Qt.Key_Plus:
+            if self.viewer.doc:
+                self.viewer.zoom_edit.setText(str(round(float(self.viewer.zoom_edit.text()) + self.zoom_step_size,2)))
+                self.viewer.show_page(self.viewer.current_page)
+        elif event.key() == Qt.Key_Minus:
+            if self.viewer.doc:
+                self.viewer.zoom_edit.setText(str(round(float(self.viewer.zoom_edit.text()) - self.zoom_step_size,2)))
+                self.viewer.show_page(self.viewer.current_page)
+        elif event.key() == Qt.Key_0:
+            if self.viewer.doc:
+                self.viewer.zoom_edit.setText(str(1.0))
+                self.viewer.show_page(self.viewer.current_page)
+        elif event.key() == Qt.Key_Escape:
+            if self.viewer.doc:
+                self.viewer.page_edit.setFocus()
+                self.viewer.page_edit.selectAll()
         else:
             super().keyPressEvent(event)
 
@@ -172,6 +189,7 @@ class PDFViewer(QMainWindow):
         self.graphics_view.centerOn(0,0)
         
         self.page_edit.setText(str(self.current_page + 1))
+        self.graphics_view.setFocus()
         QApplication.restoreOverrideCursor()        
 
     def prev_page(self):
