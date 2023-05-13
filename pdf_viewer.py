@@ -6,6 +6,9 @@ from PySide6.QtGui import QImage, QPixmap, QBrush, QColor, QPalette, QIcon
 from PySide6.QtCore import Qt, QRect, QObject, QRunnable, QThreadPool, Signal, Slot
 import fitz  # PyMuPDF
 import random
+import sqlite3
+
+db_con = sqlite3.connect('memory.db')
 
 class CustomGraphicsView(QGraphicsView):
     def __init__(self, viewer, parent=None):
@@ -147,6 +150,7 @@ class PDFViewer(QMainWindow):
         self.doc = None
         self.current_page = 0
         self.zoom_level = 1.0
+        self.file_name = ''
 
         self.zoom_edit.setText(str(self.zoom_level))
 
@@ -160,10 +164,25 @@ class PDFViewer(QMainWindow):
             self.load_pdf(file_name)
 
     def load_pdf(self, file_name):
+        self.file_name = file_name
         self.doc = fitz.open(file_name)
         self.total_pages_label.setText(f"of {self.doc.page_count}")
-        self.current_page = 0
-        self.page_edit.setText('1')
+
+        cur = db_con.cursor()
+        cur.execute("CREATE TABLE IF NOT EXISTS memory(filename TEXT, zoom REAL, page INTEGER, invert INTEGER)")
+        cur.execute("SELECT zoom, page, invert FROM memory WHERE filename LIKE ?", (self.file_name,))
+        row = cur.fetchone()
+        if not row:
+            self.current_page = 0
+            self.page_edit.setText('1')
+        else:
+            self.zoom_edit.setText(str(row[0]))
+            self.current_page = row[1]
+            self.page_edit.setText(str(row[1]+1))
+            if row[2]:
+                self.invert_colors_checkbox.setChecked(True)
+            else:
+                self.invert_colors_checkbox.setChecked(False)
         self.show_page(self.current_page)
 
     def show_page(self, page_number):
@@ -171,9 +190,30 @@ class PDFViewer(QMainWindow):
             return
         QApplication.setOverrideCursor(Qt.WaitCursor)
         self.current_page = page_number
+        self.zoom_level = self.zoom_edit.text()
+        self.update_memory()
         worker = Worker(self.doc, page_number, float(self.zoom_edit.text()), self.invert_colors_checkbox.isChecked())
         worker.signals.finished.connect(self.page_loaded)
         self.threadpool.start(worker)
+
+    def update_memory(self):
+        cur = db_con.cursor()
+        cur.execute("SELECT rowid FROM memory WHERE filename LIKE ?", (self.file_name,))
+        row = cur.fetchone()
+        if not row:
+            sql = "INSERT INTO memory(filename, zoom, page, invert) VALUES(:filename, :zoom, :page, :invert)"
+            data = (
+                {"filename": self.file_name, "zoom": self.zoom_level, "page": self.current_page, "invert": self.invert_colors_checkbox.isChecked()}
+            )
+            cur.execute(sql, data)
+        else:
+            #print(f'row here: {row[0]}, zoom_level: {self.zoom_level}')
+            sql = "UPDATE memory SET zoom=:zoom, page=:page, invert=:invert WHERE rowid=:therow"
+            data = (
+                {"zoom": self.zoom_level, "page": self.current_page, "invert": self.invert_colors_checkbox.isChecked(), "therow": row[0]}
+            )
+            cur.execute(sql, data)        
+        db_con.commit()
 
     def page_loaded(self, image):
         pixmap = QPixmap.fromImage(image)

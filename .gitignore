@@ -3,3 +3,4 @@ library/
 *.build
 *.dist
 *.onefile-build
+*.db
