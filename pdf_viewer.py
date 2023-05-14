@@ -7,6 +7,7 @@ from PySide6.QtCore import Qt, QRect, QObject, QRunnable, QThreadPool, Signal, S
 import fitz  # PyMuPDF
 import random
 import sqlite3
+import time
 
 db_con = sqlite3.connect('memory.db')
 
@@ -26,7 +27,7 @@ class CustomGraphicsView(QGraphicsView):
         elif event.key() == Qt.Key_R:
             if self.viewer.doc:
                 self.viewer.show_page(random.randint(0, self.viewer.doc.page_count))
-        elif event.key() == Qt.Key_Plus:
+        elif event.key() == Qt.Key_Plus or event.key() == Qt.Key_Equal:
             if self.viewer.doc:
                 self.viewer.zoom_edit.setText(str(round(float(self.viewer.zoom_edit.text()) + self.zoom_step_size,2)))
                 self.viewer.show_page(self.viewer.current_page)
@@ -90,9 +91,9 @@ class PDFViewer(QMainWindow):
         self.graphics_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.graphics_scene = QGraphicsScene()
 
-        self.page_label = QLabel("Page:")
+        self.page_label = QLabel("Page")
         self.page_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self.page_edit = QLineEdit("1")
+        self.page_edit = QLineEdit("0")
         self.page_edit.setFixedWidth(50)
         self.page_edit.editingFinished.connect(self.page_edit_changed)
         self.total_pages_label = QLabel()
@@ -163,13 +164,18 @@ class PDFViewer(QMainWindow):
             self.setWindowTitle(f'{_path.basename(file_name)}')
             self.load_pdf(file_name)
 
+    def create_memory_table(self):
+        cur = db_con.cursor()
+        cur.execute("CREATE TABLE IF NOT EXISTS memory(filename TEXT, zoom REAL, page INTEGER, invert INTEGER, first_accessed INTEGER, last_accessed INTEGER)")
+        db_con.commit()
+
     def load_pdf(self, file_name):
         self.file_name = file_name
         self.doc = fitz.open(file_name)
         self.total_pages_label.setText(f"of {self.doc.page_count}")
 
+        self.create_memory_table()
         cur = db_con.cursor()
-        cur.execute("CREATE TABLE IF NOT EXISTS memory(filename TEXT, zoom REAL, page INTEGER, invert INTEGER)")
         cur.execute("SELECT zoom, page, invert FROM memory WHERE filename LIKE ?", (self.file_name,))
         row = cur.fetchone()
         if not row:
@@ -197,20 +203,31 @@ class PDFViewer(QMainWindow):
         self.threadpool.start(worker)
 
     def update_memory(self):
+        self.create_memory_table()
         cur = db_con.cursor()
         cur.execute("SELECT rowid FROM memory WHERE filename LIKE ?", (self.file_name,))
         row = cur.fetchone()
         if not row:
-            sql = "INSERT INTO memory(filename, zoom, page, invert) VALUES(:filename, :zoom, :page, :invert)"
+            sql = "INSERT INTO memory(filename, zoom, page, invert, first_accessed) VALUES(:filename, :zoom, :page, :invert, :first)"
             data = (
-                {"filename": self.file_name, "zoom": self.zoom_level, "page": self.current_page, "invert": self.invert_colors_checkbox.isChecked()}
+                {"filename": self.file_name, 
+                 "zoom": self.zoom_level, 
+                 "page": self.current_page, 
+                 "invert": self.invert_colors_checkbox.isChecked(),
+                 "first": int(time.time())
+                }
             )
             cur.execute(sql, data)
         else:
             #print(f'row here: {row[0]}, zoom_level: {self.zoom_level}')
-            sql = "UPDATE memory SET zoom=:zoom, page=:page, invert=:invert WHERE rowid=:therow"
+            sql = "UPDATE memory SET zoom=:zoom, page=:page, invert=:invert, last_accessed=:last WHERE rowid=:therow"
             data = (
-                {"zoom": self.zoom_level, "page": self.current_page, "invert": self.invert_colors_checkbox.isChecked(), "therow": row[0]}
+                {"zoom": self.zoom_level, 
+                 "page": self.current_page, 
+                 "invert": self.invert_colors_checkbox.isChecked(), 
+                 "therow": row[0],
+                 "last": int(time.time())
+                }
             )
             cur.execute(sql, data)        
         db_con.commit()
