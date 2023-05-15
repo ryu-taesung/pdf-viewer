@@ -145,8 +145,14 @@ class PDFViewer(QMainWindow):
 
         self.setCentralWidget(central_widget)
 
-        self.open_pdf_action = self.menuBar().addAction("Open PDF")
-        self.open_pdf_action.triggered.connect(self.open_pdf)
+        file_menu = self.menuBar().addMenu("File")
+        open_action = file_menu.addAction("Open")
+        open_action.triggered.connect(self.open_pdf)
+        self.recent_submenu = file_menu.addMenu("Recent")
+        file_menu.addSeparator()
+        exit_action = file_menu.addAction("Exit")
+        exit_action.triggered.connect(self.close)
+        self.update_recent()
 
         self.doc = None
         self.current_page = 0
@@ -155,13 +161,24 @@ class PDFViewer(QMainWindow):
 
         self.zoom_edit.setText(str(self.zoom_level))
 
+    def update_recent(self):
+        recent_files = db_con.execute("SELECT filename, page FROM memory ORDER BY last_accessed DESC LIMIT 24").fetchall()
+        def create_recent_pdf_handler(filename):
+            def handler():
+                self.load_pdf(filename)
+            return handler
+        self.recent_submenu.clear()
+        # Add actions for each recent file to the "Recent" submenu
+        for file in recent_files:
+            recent_action = self.recent_submenu.addAction(f'{file[0]} ({file[1]+1})') #_path.basename(file[0]))
+            recent_action.triggered.connect(create_recent_pdf_handler(file[0]))  # Connect the action to a function to handle opening recent PDFs        
+
     def open_pdf(self):
         options = QFileDialog.Options()
         options |= QFileDialog.ReadOnly
         file_name, _ = QFileDialog.getOpenFileName(self, "Open PDF", "", "PDF Files (*.pdf);;Epub Books (*.epub);;All files (*.*)", options=options)
 
         if file_name:
-            self.setWindowTitle(f'{_path.basename(file_name)}')
             self.load_pdf(file_name)
 
     def create_memory_table(self):
@@ -171,6 +188,7 @@ class PDFViewer(QMainWindow):
 
     def load_pdf(self, file_name):
         self.file_name = file_name
+        self.setWindowTitle(f'{_path.basename(file_name)}')
         self.doc = fitz.open(file_name)
         self.total_pages_label.setText(f"of {self.doc.page_count}")
 
@@ -190,6 +208,7 @@ class PDFViewer(QMainWindow):
             else:
                 self.invert_colors_checkbox.setChecked(False)
         self.show_page(self.current_page)
+        self.update_recent()
 
     def show_page(self, page_number):
         if self.doc is None or page_number < 0 or page_number >= self.doc.page_count:
@@ -208,13 +227,14 @@ class PDFViewer(QMainWindow):
         cur.execute("SELECT rowid FROM memory WHERE filename LIKE ?", (self.file_name,))
         row = cur.fetchone()
         if not row:
-            sql = "INSERT INTO memory(filename, zoom, page, invert, first_accessed) VALUES(:filename, :zoom, :page, :invert, :first)"
+            sql = "INSERT INTO memory(filename, zoom, page, invert, first_accessed, last_accessed) VALUES(:filename, :zoom, :page, :invert, :first, :last)"
             data = (
                 {"filename": self.file_name, 
                  "zoom": self.zoom_level, 
                  "page": self.current_page, 
                  "invert": self.invert_colors_checkbox.isChecked(),
-                 "first": int(time.time())
+                 "first": int(time.time()),
+                 "last": int(time.time())
                 }
             )
             cur.execute(sql, data)
