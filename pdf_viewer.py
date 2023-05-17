@@ -152,6 +152,7 @@ class PDFViewer(QMainWindow):
         file_menu.addSeparator()
         exit_action = file_menu.addAction("Exit")
         exit_action.triggered.connect(self.close)
+        self.create_memory_table()
         self.update_recent()
 
         self.doc = None
