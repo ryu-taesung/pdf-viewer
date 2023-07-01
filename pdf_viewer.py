@@ -9,6 +9,16 @@ import random
 import sqlite3
 import time
 
+# for Windows icon
+# from: https://www.pythonguis.com/tutorials/packaging-pyside6-applications-windows-pyinstaller-installforge/
+basedir = _path.dirname(__file__)
+try:
+    from ctypes import windll # Only exists on Windows.
+    myappid = 'rts.pdfviewer.standalone'
+    windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+except ImportError:
+    pass
+
 db_con = sqlite3.connect('memory.db')
 
 class CustomGraphicsView(QGraphicsView):
@@ -81,7 +91,7 @@ class PDFViewer(QMainWindow):
         super().__init__()
         self.setWindowTitle("PDF Viewer")
         icon = QIcon()
-        icon.addFile('file-pdf.png')
+        icon.addFile(_path.join(basedir, 'file-pdf.png'))
         self.setWindowIcon(icon)
         self.resize(800, 600)
         self.threadpool = QThreadPool()
@@ -148,6 +158,8 @@ class PDFViewer(QMainWindow):
         file_menu = self.menuBar().addMenu("File")
         open_action = file_menu.addAction("Open")
         open_action.triggered.connect(self.open_pdf)
+        refresh_recent = file_menu.addAction("Refresh Recent")
+        refresh_recent.triggered.connect(self.update_recent)
         self.recent_submenu = file_menu.addMenu("Recent")
         file_menu.addSeparator()
         exit_action = file_menu.addAction("Exit")
@@ -190,6 +202,8 @@ class PDFViewer(QMainWindow):
     def load_pdf(self, file_name):
         self.file_name = file_name
         self.setWindowTitle(f'{_path.basename(file_name)}')
+        if self.doc:
+            self.doc.close()
         self.doc = fitz.open(file_name)
         self.total_pages_label.setText(f"of {self.doc.page_count}")
 
@@ -314,8 +328,8 @@ if __name__ == "__main__":
     palette.setColor(QPalette.Button, QColor(53, 53, 53))
     palette.setColor(QPalette.ButtonText, Qt.white)
     palette.setColor(QPalette.BrightText, Qt.red)
-    palette.setColor(QPalette.Link, QColor(42, 130, 218))
-    palette.setColor(QPalette.Highlight, QColor(42, 130, 218))
+    palette.setColor(QPalette.Link, QColor(42, 218, 130))
+    palette.setColor(QPalette.Highlight, QColor(42, 218, 130))
     palette.setColor(QPalette.HighlightedText, Qt.black)
     app.setPalette(palette)
     
