@@ -37,6 +37,9 @@ class CustomGraphicsView(QGraphicsView):
         elif event.key() == Qt.Key_R:
             if self.viewer.doc:
                 self.viewer.show_page(random.randint(0, self.viewer.doc.page_count))
+        elif event.key() == Qt.Key_T:
+            if self.viewer.doc:
+                self.viewer.two_pages_checkbox.setChecked(not self.viewer.two_pages_checkbox.isChecked())
         elif event.key() == Qt.Key_Plus or event.key() == Qt.Key_Equal:
             if self.viewer.doc:
                 self.viewer.zoom_edit.setText(str(round(float(self.viewer.zoom_edit.text()) + self.zoom_step_size,2)))
@@ -57,23 +60,31 @@ class CustomGraphicsView(QGraphicsView):
             super().keyPressEvent(event)
 
 class WorkerSignals(QObject):
-    finished = Signal(object)
+    finished = Signal(object, object)
 
 class Worker(QRunnable):
-    def __init__(self, doc, page_number, zoom, invert):
+    def __init__(self, doc, page_number, zoom, invert, two_pages):
         super().__init__()
         self.signals = WorkerSignals()
         self.doc = doc
         self.page_number = page_number
         self.zoom = zoom
         self.invert = invert
+        self.two_pages = two_pages
 
     @Slot()
     def run(self):
         pdf_page = self.doc.load_page(self.page_number)
+        next_page = self.page_number + 1
+        pdf_page2 = None
+        if next_page < self.doc.page_count and self.two_pages:
+            pdf_page2 = self.doc.load_page(next_page)
         zoom = self.zoom
         mat = fitz.Matrix(zoom, zoom)
         image = QImage.fromData(pdf_page.get_pixmap(matrix=mat).tobytes(), "PNG")
+        image2 = None
+        if pdf_page2:
+            image2 = QImage.fromData(pdf_page2.get_pixmap(matrix=mat).tobytes(), "PNG")
 
         # Invert colors if the checkbox is checked
         if self.invert:
@@ -83,8 +94,10 @@ class Worker(QRunnable):
             #         inverted_color = QColor.fromRgb(~color.rgb() & 0xFFFFFF)
             #         image.setPixelColor(x, y, inverted_color)
             image.invertPixels()
+            if image2:
+                image2.invertPixels()
         
-        self.signals.finished.emit(image)
+        self.signals.finished.emit(image, image2)
 
 class PDFViewer(QMainWindow):
     def __init__(self):
@@ -148,7 +161,11 @@ class PDFViewer(QMainWindow):
         
         self.invert_colors_checkbox = QCheckBox("Invert Colors")
         self.invert_colors_checkbox.stateChanged.connect(self.invert_colors_toggled)
+
+        self.two_pages_checkbox = QCheckBox("Two Pages")
+        self.two_pages_checkbox.stateChanged.connect(self.two_pages_toggled)
         controls_layout.addWidget(self.invert_colors_checkbox)
+        controls_layout.addWidget(self.two_pages_checkbox)
         controls_layout.addWidget(self.next_button)
 
         main_layout.addLayout(controls_layout)
@@ -189,7 +206,7 @@ class PDFViewer(QMainWindow):
     def open_pdf(self):
         options = QFileDialog.Options()
         options |= QFileDialog.ReadOnly
-        file_name, _ = QFileDialog.getOpenFileName(self, "Open PDF", "", "PDF Files (*.pdf);;Epub Books (*.epub);;All files (*.*)", options=options)
+        file_name, _ = QFileDialog.getOpenFileName(self, "Open PDF", "", "PDF & Epub Files (*.pdf *.epub);;PDF Files (*.pdf);;Epub Books (*.epub);;All files (*.*)", options=options)
 
         if file_name:
             self.load_pdf(file_name)
@@ -232,7 +249,7 @@ class PDFViewer(QMainWindow):
         self.current_page = page_number
         self.zoom_level = self.zoom_edit.text()
         self.update_memory()
-        worker = Worker(self.doc, page_number, float(self.zoom_edit.text()), self.invert_colors_checkbox.isChecked())
+        worker = Worker(self.doc, page_number, float(self.zoom_edit.text()), self.invert_colors_checkbox.isChecked(), self.two_pages_checkbox.isChecked())
         worker.signals.finished.connect(self.page_loaded)
         self.threadpool.start(worker)
 
@@ -267,22 +284,45 @@ class PDFViewer(QMainWindow):
             cur.execute(sql, data)        
         db_con.commit()
 
-    def page_loaded(self, image):
-        pixmap = QPixmap.fromImage(image)
-        self.graphics_scene.clear()
-        self.graphics_scene.addPixmap(pixmap)
-        self.graphics_view.setScene(self.graphics_scene)
-        self.graphics_view.setSceneRect(pixmap.rect())
+    def page_loaded(self, image1, image2=None):
+        # Create QPixmap object from the first image
+        pixmap1 = QPixmap.fromImage(image1)
 
-        # Recenter the view
-        #self.graphics_view.centerOn(self.graphics_scene.itemsBoundingRect().center())
+        # Clear the previous items in the scene
+        self.graphics_scene.clear()
+
+        # Add the first pixmap to the scene
+        self.graphics_scene.addPixmap(pixmap1)
+
+        # If the second image is provided, create its QPixmap and add it to the scene
+        if image2:
+            pixmap2 = QPixmap.fromImage(image2)
+            self.graphics_scene.addPixmap(pixmap2).setPos(pixmap1.width(), 0)
+            # Adjust the scene rectangle to fit both images
+            combined_width = pixmap1.width() + pixmap2.width()
+            combined_height = max(pixmap1.height(), pixmap2.height())
+            self.graphics_view.setSceneRect(0, 0, combined_width, combined_height)
+        else:
+            # Adjust the scene rectangle to fit the single image
+            self.graphics_view.setSceneRect(pixmap1.rect())
+
+        # Set the scene for the graphics view
+        self.graphics_view.setScene(self.graphics_scene)
         
-        # Scroll to top, not sure if this is best
-        self.graphics_view.centerOn(0,0)
-        
+        # Scroll to top
+        self.graphics_view.centerOn(0, 0)
+
+        # If you're using this for pagination, update the current page number
         self.page_edit.setText(str(self.current_page + 1))
+
+        # Set focus back to the graphics view
         self.graphics_view.setFocus()
-        QApplication.restoreOverrideCursor()        
+
+        # Restore the application cursor
+        QApplication.restoreOverrideCursor()
+
+
+
 
     def prev_page(self):
         self.show_page(self.current_page - 1)
@@ -307,7 +347,10 @@ class PDFViewer(QMainWindow):
             pass
 
     def invert_colors_toggled(self, state):
-      self.show_page(self.current_page)
+        self.show_page(self.current_page)
+
+    def two_pages_toggled(self, state):
+        self.show_page(self.current_page)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
