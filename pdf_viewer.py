@@ -321,14 +321,17 @@ class PDFViewer(QMainWindow):
         # Restore the application cursor
         QApplication.restoreOverrideCursor()
 
-
-
-
     def prev_page(self):
-        self.show_page(self.current_page - 1)
+        if self.two_pages_checkbox.isChecked() and self.current_page - 2 >= 0:
+            self.show_page(self.current_page - 2)
+        else:
+            self.show_page(self.current_page - 1)
 
     def next_page(self):
-        self.show_page(self.current_page + 1)
+        if self.two_pages_checkbox.isChecked() and self.current_page + 2 < self.doc.page_count:
+            self.show_page(self.current_page + 2)
+        elif not self.two_pages_checkbox.isChecked():
+            self.show_page(self.current_page + 1)
 
     def page_edit_changed(self):
         try:
