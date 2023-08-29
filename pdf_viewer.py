@@ -2,7 +2,7 @@ import sys
 from os import path as _path
 from PySide6.QtWidgets import (QApplication, QMainWindow, QFileDialog, QVBoxLayout, QWidget, QGraphicsView,
                                QGraphicsScene, QLabel, QLineEdit, QPushButton, QHBoxLayout, QSizePolicy, QCheckBox, QSpacerItem)
-from PySide6.QtGui import QImage, QPixmap, QBrush, QColor, QPalette, QIcon
+from PySide6.QtGui import QAction, QImage, QPixmap, QBrush, QColor, QPalette, QIcon
 from PySide6.QtCore import Qt, QRect, QObject, QRunnable, QThreadPool, Signal, Slot
 import fitz  # PyMuPDF
 import random
@@ -32,14 +32,19 @@ class CustomGraphicsView(QGraphicsView):
             self.viewer.prev_page()
         elif event.key() == Qt.Key_Right:
             self.viewer.next_page()
+        elif event.key() == Qt.Key_C:
+            self.viewer.center_action.setChecked(not self.viewer.center_action.isChecked())
+            self.viewer.center_toggled()
         elif event.key() == Qt.Key_I:
-            self.viewer.invert_colors_checkbox.setChecked(not self.viewer.invert_colors_checkbox.isChecked())
+            self.viewer.invert_action.setChecked(not self.viewer.invert_action.isChecked())
+            self.viewer.show_page(self.viewer.current_page)
         elif event.key() == Qt.Key_R:
             if self.viewer.doc:
                 self.viewer.show_page(random.randint(0, self.viewer.doc.page_count))
         elif event.key() == Qt.Key_T:
             if self.viewer.doc:
-                self.viewer.two_pages_checkbox.setChecked(not self.viewer.two_pages_checkbox.isChecked())
+                self.viewer.two_pages_action.setChecked(not self.viewer.two_pages_action.isChecked())
+                self.viewer.show_page(self.viewer.current_page)
         elif event.key() == Qt.Key_Plus or event.key() == Qt.Key_Equal:
             if self.viewer.doc:
                 self.viewer.zoom_edit.setText(str(round(float(self.viewer.zoom_edit.text()) + self.zoom_step_size,2)))
@@ -158,14 +163,6 @@ class PDFViewer(QMainWindow):
 
         controls_layout = QHBoxLayout()
         controls_layout.addWidget(self.prev_button)
-        
-        self.invert_colors_checkbox = QCheckBox("Invert Colors")
-        self.invert_colors_checkbox.stateChanged.connect(self.invert_colors_toggled)
-
-        self.two_pages_checkbox = QCheckBox("Two Pages")
-        self.two_pages_checkbox.stateChanged.connect(self.two_pages_toggled)
-        controls_layout.addWidget(self.invert_colors_checkbox)
-        controls_layout.addWidget(self.two_pages_checkbox)
         controls_layout.addWidget(self.next_button)
 
         main_layout.addLayout(controls_layout)
@@ -181,6 +178,17 @@ class PDFViewer(QMainWindow):
         file_menu.addSeparator()
         exit_action = file_menu.addAction("Exit")
         exit_action.triggered.connect(self.close)
+        view_menu = self.menuBar().addMenu("View")
+        self.center_action = QAction("Center Vertically", view_menu, checkable=True)
+        self.invert_action = QAction("Invert Colors", view_menu, checkable=True)
+        self.two_pages_action = QAction("Two Pages", view_menu, checkable=True)
+        self.center_action.triggered.connect(self.center_toggled)
+        self.invert_action.triggered.connect(self.invert_colors_toggled)
+        self.two_pages_action.triggered.connect(self.two_pages_toggled)
+        view_menu.addAction(self.center_action)
+        view_menu.addAction(self.invert_action)
+        view_menu.addAction(self.two_pages_action)
+
         self.create_memory_table()
         self.update_recent()
 
@@ -188,6 +196,7 @@ class PDFViewer(QMainWindow):
         self.current_page = 0
         self.zoom_level = 1.0
         self.file_name = ''
+        self.ignore_changes = False
 
         self.zoom_edit.setText(str(self.zoom_level))
 
@@ -217,6 +226,7 @@ class PDFViewer(QMainWindow):
         db_con.commit()
 
     def load_pdf(self, file_name):
+        self.ignore_changes = True
         self.file_name = file_name
         self.setWindowTitle(f'{_path.basename(file_name)}')
         if self.doc:
@@ -236,9 +246,9 @@ class PDFViewer(QMainWindow):
             self.current_page = row[1]
             self.page_edit.setText(str(row[1]+1))
             if row[2]:
-                self.invert_colors_checkbox.setChecked(True)
+                self.invert_action.setChecked(True)
             else:
-                self.invert_colors_checkbox.setChecked(False)
+                self.invert_action.setChecked(False)
         self.show_page(self.current_page)
         self.update_recent()
 
@@ -249,7 +259,7 @@ class PDFViewer(QMainWindow):
         self.current_page = page_number
         self.zoom_level = self.zoom_edit.text()
         self.update_memory()
-        worker = Worker(self.doc, page_number, float(self.zoom_edit.text()), self.invert_colors_checkbox.isChecked(), self.two_pages_checkbox.isChecked())
+        worker = Worker(self.doc, page_number, float(self.zoom_edit.text()), self.invert_action.isChecked(), self.two_pages_action.isChecked())
         worker.signals.finished.connect(self.page_loaded)
         self.threadpool.start(worker)
 
@@ -264,7 +274,7 @@ class PDFViewer(QMainWindow):
                 {"filename": self.file_name, 
                  "zoom": self.zoom_level, 
                  "page": self.current_page, 
-                 "invert": self.invert_colors_checkbox.isChecked(),
+                 "invert": self.invert_action.isChecked(),
                  "first": int(time.time()),
                  "last": int(time.time())
                 }
@@ -276,7 +286,7 @@ class PDFViewer(QMainWindow):
             data = (
                 {"zoom": self.zoom_level, 
                  "page": self.current_page, 
-                 "invert": self.invert_colors_checkbox.isChecked(), 
+                 "invert": self.invert_action.isChecked(), 
                  "therow": row[0],
                  "last": int(time.time())
                 }
@@ -309,10 +319,13 @@ class PDFViewer(QMainWindow):
         # Set the scene for the graphics view
         self.graphics_view.setScene(self.graphics_scene)
         
-        # Scroll to top
-        self.graphics_view.centerOn(0, 0)
+        # Scroll to center or top depending on checkmark
+        if self.center_action.isChecked():
+            self.graphics_view.centerOn(self.graphics_scene.itemsBoundingRect().center())
+        else: 
+            self.graphics_view.centerOn(0, 0)
 
-        # If you're using this for pagination, update the current page number
+        # Update the current page number
         self.page_edit.setText(str(self.current_page + 1))
 
         # Set focus back to the graphics view
@@ -320,28 +333,36 @@ class PDFViewer(QMainWindow):
 
         # Restore the application cursor
         QApplication.restoreOverrideCursor()
+        
+        self.ignore_changes = False
 
     def prev_page(self):
-        if self.two_pages_checkbox.isChecked() and self.current_page - 2 >= 0:
+        if self.two_pages_action.isChecked() and self.current_page - 2 >= 0:
             self.show_page(self.current_page - 2)
         else:
             self.show_page(self.current_page - 1)
 
     def next_page(self):
-        if self.two_pages_checkbox.isChecked() and self.current_page + 2 < self.doc.page_count:
+        if self.two_pages_action.isChecked() and self.current_page + 2 < self.doc.page_count:
             self.show_page(self.current_page + 2)
-        elif not self.two_pages_checkbox.isChecked():
+        elif not self.two_pages_action.isChecked():
             self.show_page(self.current_page + 1)
 
     def page_edit_changed(self):
+        if self.ignore_changes:
+            return
         try:
+            self.ignore_changes = True
             page_number = int(self.page_edit.text()) - 1
+            self.ignore_changes = False
             self.show_page(page_number)
         except ValueError:
             # Reset the page_edit to the current page number in case of invalid input
             self.page_edit.setText(str(self.current_page + 1))
 
     def zoom_edit_changed(self):
+        if self.ignore_changes:
+            return
         try:
             zoom = float(self.zoom_edit.text())
             self.zoom_level = zoom
@@ -349,11 +370,19 @@ class PDFViewer(QMainWindow):
         except:
             pass
 
-    def invert_colors_toggled(self, state):
+    def invert_colors_toggled(self):
+        if self.ignore_changes:
+            return
         self.show_page(self.current_page)
 
-    def two_pages_toggled(self, state):
+    def two_pages_toggled(self):
         self.show_page(self.current_page)
+
+    def center_toggled(self):
+        if self.center_action.isChecked():
+            self.graphics_view.centerOn(self.graphics_scene.itemsBoundingRect().center())
+        else:
+            self.graphics_view.centerOn(0,0)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
