@@ -8,6 +8,7 @@ import fitz  # PyMuPDF
 import random
 import sqlite3
 import time
+from datetime import datetime
 
 # for Windows icon
 # from: https://www.pythonguis.com/tutorials/packaging-pyside6-applications-windows-pyinstaller-installforge/
@@ -201,7 +202,7 @@ class PDFViewer(QMainWindow):
         self.zoom_edit.setText(str(self.zoom_level))
 
     def update_recent(self):
-        recent_files = db_con.execute("SELECT filename, page FROM memory ORDER BY last_accessed DESC LIMIT 24").fetchall()
+        recent_files = db_con.execute("SELECT filename, page, last_accessed FROM memory ORDER BY last_accessed DESC LIMIT 36").fetchall()
         def create_recent_pdf_handler(filename):
             def handler():
                 self.load_pdf(filename)
@@ -209,7 +210,7 @@ class PDFViewer(QMainWindow):
         self.recent_submenu.clear()
         # Add actions for each recent file to the "Recent" submenu
         for file in recent_files:
-            recent_action = self.recent_submenu.addAction(f'{file[0]} ({file[1]+1})') #_path.basename(file[0]))
+            recent_action = self.recent_submenu.addAction(f'{file[0]} ({file[1]+1}); {str(datetime.fromtimestamp(file[2])).split(" ")[0]}') #_path.basename(file[0]))
             recent_action.triggered.connect(create_recent_pdf_handler(file[0]))  # Connect the action to a function to handle opening recent PDFs        
 
     def open_pdf(self):
