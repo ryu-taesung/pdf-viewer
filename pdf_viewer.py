@@ -214,8 +214,7 @@ class PDFViewer(QMainWindow):
             recent_action.triggered.connect(create_recent_pdf_handler(file[0]))  # Connect the action to a function to handle opening recent PDFs        
 
     def open_pdf(self):
-        options = QFileDialog.Options()
-        options |= QFileDialog.ReadOnly
+        options = QFileDialog.Option.ReadOnly
         file_name, _ = QFileDialog.getOpenFileName(self, "Open PDF", "", "PDF & Epub Files (*.pdf *.epub);;PDF Files (*.pdf);;Epub Books (*.epub);;All files (*.*)", options=options)
 
         if file_name:
