@@ -1,5 +1,6 @@
 venv/
 library/
+lib/
 *.build
 *.dist
 *.onefile-build
