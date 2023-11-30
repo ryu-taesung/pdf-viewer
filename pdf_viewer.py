@@ -108,7 +108,12 @@ class Worker(QRunnable):
 class PDFViewer(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("PDF Viewer")
+        try:
+            with open(_path.join('version.txt'), 'r') as file:
+                self.version_number = file.read()
+        except:
+            self.version_number = "ERR"
+        self.setWindowTitle("PDF Viewer "+self.version_number)
         icon = QIcon()
         icon.addFile(_path.join(basedir, 'file-pdf.png'))
         self.setWindowIcon(icon)
