@@ -20,7 +20,7 @@ try:
 except ImportError:
     pass
 
-db_con = sqlite3.connect('memory.db')
+db_con = sqlite3.connect(_path.join(basedir, 'memory.db'))
 
 class CustomGraphicsView(QGraphicsView):
     def __init__(self, viewer, parent=None):
@@ -109,7 +109,7 @@ class PDFViewer(QMainWindow):
     def __init__(self):
         super().__init__()
         try:
-            with open(_path.join('version.txt'), 'r') as file:
+            with open(_path.join(basedir, 'version.txt'), 'r') as file:
                 self.version_number = file.read()
         except:
             self.version_number = "ERR"
