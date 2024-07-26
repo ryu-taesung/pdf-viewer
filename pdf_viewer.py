@@ -20,7 +20,7 @@ try:
 except ImportError:
     pass
 
-db_con = sqlite3.connect(_path.join(basedir, 'memory.db'))
+db_con = sqlite3.connect('memory.db')
 
 class CustomGraphicsView(QGraphicsView):
     def __init__(self, viewer, parent=None):
